@@ -1,0 +1,20 @@
+{
+  "name": "riscv-sim",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Simulador didático RISC-V RV32I: monociclo e pipeline de 5 estágios com hazards, forwarding e voltar no tempo.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  }
+}

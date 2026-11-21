@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bancada RISC-V</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>Bancada RISC-V</h1>
+      <p>Um processador desenhado à mão que você monta, executa e volta no tempo.</p>
+    </div>
+    <nav id="figs"></nav>
+  </aside>
+
+  <main>
+    <div class="bench">
+    <header class="fig-head">
+      <div>
+        <h2 id="fig-title">Fig. 01 — Monociclo</h2>
+        <div class="eyebrow">Bancada</div>
+      </div>
+      <div id="fig-tagline" class="tagline"></div>
+    </header>
+
+    <section class="stage-area">
+      <div class="actions">
+        <button class="pill-btn" data-act="back" title="Seta para a esquerda">‹ Voltar</button>
+        <button class="pill-btn" data-act="step" title="Seta para a direita">Passo ›</button>
+        <button class="pill-btn" data-act="run" title="Espaço">Rodar ▸</button>
+        <button class="pill-btn" data-act="end">Até o fim</button>
+        <button class="pill-btn" data-act="reset">Reiniciar</button>
+        <button class="pill-btn" data-act="explode" title="Tecla E">Vista explodida</button>
+        <div id="tip" class="tip">MONTADO. APERTE PASSO →</div>
+      </div>
+      <dl class="status">
+        <dt>Ciclo</dt><dd id="st-cycle" class="big">0</dd>
+        <dt>Status</dt><dd id="st-status" class="mid">PRONTO</dd>
+        <dt>CPI</dt><dd id="st-cpi" class="small">—</dd>
+      </dl>
+      <div id="board-host" class="board-host"></div>
+    </section>
+
+    <section class="controls">
+      <label class="ctl">
+        <span class="eyebrow">Traço tremido</span>
+        <input id="wobble-range" type="range" min="0" max="6" step="0.5" value="0" />
+      </label>
+      <div class="ctl">
+        <span class="eyebrow">Cor</span>
+        <div id="swatches" class="swatches"></div>
+      </div>
+      <div class="ctl">
+        <span class="eyebrow">Rótulos</span>
+        <button id="labels" class="pill-btn small on">On</button>
+      </div>
+      <div class="ctl">
+        <span class="eyebrow">Modelo</span>
+        <div class="seg">
+          <button class="pill-btn small" data-model="single">Monociclo</button>
+          <button class="pill-btn small" data-model="pipeline">Pipeline</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="eyebrow">Forwarding</span>
+        <button id="fwd" class="pill-btn small">On</button>
+      </div>
+      <label class="ctl">
+        <span class="eyebrow">Velocidade</span>
+        <input id="speed" type="range" min="1" max="20" step="1" value="4" />
+      </label>
+    </section>
+    </div>
+
+    <section class="cols">
+      <div>
+        <h3 class="eyebrow">Sobre esta figura</h3>
+        <p id="intro" class="intro"></p>
+        <h3 class="eyebrow" id="events-title">O que aconteceu</h3>
+        <ul id="events" class="events"></ul>
+      </div>
+      <div>
+        <h3 class="eyebrow">Experimente · <span id="editor-title"></span></h3>
+        <div class="editor">
+          <pre id="backdrop" class="backdrop" aria-hidden="true"></pre>
+          <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        </div>
+        <div class="editor-bar">
+          <button class="pill-btn small dark" data-act="assemble" title="Ctrl+Enter">Montar</button>
+          <span id="asm-msg" class="asm-msg"></span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3 class="eyebrow">Diagrama do pipeline · instrução × ciclo</h3>
+      <div id="diagram" class="diagram"></div>
+    </section>
+
+    <section class="cols three">
+      <div>
+        <h3 class="eyebrow">Registradores</h3>
+        <div id="regs" class="regs"></div>
+      </div>
+      <div>
+        <h3 class="eyebrow">Memória · .data</h3>
+        <div id="mem" class="mem"></div>
+      </div>
+      <div>
+        <h3 class="eyebrow">Comparação · mesmo programa</h3>
+        <div id="compare" class="compare"></div>
+      </div>
+    </section>
+
+    <footer>Fig. = experimento. Atalhos: → passo, ← voltar, espaço roda/pausa, E vista explodida, Ctrl+Enter monta.</footer>
+  </main>
+  <script type="module" src="/src/ui/main.ts"></script>
+</body>
+</html>
