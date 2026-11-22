@@ -316,9 +316,56 @@ footer { margin-top: 40px; color: var(--ink-soft); font-size: 12px; border-top: 
 .board .fwd-pill { fill: var(--accent); }
 @keyframes flow { to { stroke-dashoffset: -11; } }
 
+/* ---------- placa completa (todos os componentes) ---------- */
+.fb polygon { stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
+.fb-base .top { fill: var(--base-top); } .fb-base .left { fill: var(--base-left); } .fb-base .right { fill: var(--base-right); }
+.fb-pcb .top { fill: var(--pcb-top); } .fb-pcb .left { fill: var(--pcb-left); } .fb-pcb .right { fill: var(--pcb-right); }
+.fb .fb-hole { fill: var(--paper); stroke: var(--ink); stroke-width: 2; }
+.fb .fb-silk-stage { font-size: 26px; font-weight: 800; fill: color-mix(in srgb, var(--card) 55%, transparent); letter-spacing: 0.06em; }
+.fb .fb-footprint { fill: color-mix(in srgb, var(--ink) 14%, transparent); stroke-dasharray: 5 4; stroke-width: 1.3; }
+
+.fb .fb-wire { fill: none; stroke: var(--pcb-right); stroke-width: 2.6; stroke-linejoin: round; stroke-linecap: round; }
+.fb .fb-wire-under { fill: none; stroke: none; stroke-width: 8; stroke-linejoin: round; stroke-linecap: round; }
+.fb .fb-wire.on { stroke: var(--ink); stroke-width: 3.2; }
+.fb .fb-wire-under.on { stroke: var(--card); }
+.fb .fb-wire.hot { stroke: var(--card); stroke-width: 3.6; stroke-dasharray: 7 4; animation: flow 0.6s linear infinite; }
+.fb .fb-wire-under.hot { stroke: var(--ink); stroke-width: 8; }
+.fb .fb-ctrl { fill: none; stroke: color-mix(in srgb, var(--ink) 55%, transparent); stroke-width: 1.6; stroke-dasharray: 3 4; }
+.fb .fb-ctrl.alert { stroke: var(--stall); stroke-width: 3; }
+.fb .fb-ctrl.hot { stroke: var(--ink); stroke-width: 2.6; }
+
+.fb .fb-body .top { fill: var(--ichip-top); } .fb .fb-body .left { fill: var(--ichip-left); } .fb .fb-body .right { fill: var(--ichip-right); }
+.fb .fb-solid.on .fb-body .top { fill: color-mix(in srgb, var(--accent) 38%, var(--card)); }
+.fb .fb-solid.on .fb-body .left { fill: color-mix(in srgb, var(--accent) 45%, var(--ichip-left)); }
+.fb .fb-solid.on .fb-body .right { fill: color-mix(in srgb, var(--accent) 45%, var(--ichip-right)); }
+.fb .fb-solid.on .fb-body polygon, .fb .fb-solid.hot .fb-body polygon { stroke-width: 2.2; }
+.fb .fb-solid.hot .fb-body .top { fill: var(--chip-top); } .fb .fb-solid.hot .fb-body .left { fill: var(--chip-left); } .fb .fb-solid.hot .fb-body .right { fill: var(--chip-right); }
+.fb .fb-solid.miss .fb-body .top, .fb .fb-solid.alert .fb-body .top { fill: var(--stall); }
+.fb .fb-solid.miss .fb-body .left, .fb .fb-solid.alert .fb-body .left { fill: color-mix(in srgb, var(--stall) 70%, var(--ink)); }
+.fb .fb-solid.miss .fb-body .right, .fb .fb-solid.alert .fb-body .right { fill: color-mix(in srgb, var(--stall) 55%, var(--ink)); }
+.fb .fb-title { font-size: 13px; font-weight: 800; fill: var(--ink); }
+.fb .fb-title.big { font-size: 15px; }
+.fb .fb-sub { font-size: 11px; font-weight: 600; fill: var(--ink-soft); }
+.fb .fb-solid.hot .fb-title, .fb .fb-solid.hot .fb-sub, .fb .fb-solid.miss .fb-title, .fb .fb-solid.miss .fb-sub,
+.fb .fb-solid.alert .fb-title, .fb .fb-solid.alert .fb-sub { fill: var(--card); }
+.fb .fb-latch-name { font-size: 11px; font-weight: 800; fill: var(--card); letter-spacing: 0.05em; }
+.fb .fb-latch .top { fill: var(--latch-top); } .fb .fb-latch .left { fill: var(--latch-left); } .fb .fb-latch .right { fill: var(--latch-right); }
+.fb.single .fb-latch, .fb.single .pipe-only { display: none; }
+
+.fb .fb-lift { transition: transform 0.45s cubic-bezier(0.3, 0.7, 0.3, 1); }
+.fb.exploded .fb-solid { transform: translateY(-26px); }
+.fb.exploded .fb-latch { transform: translateY(-14px); }
+.fb .fb-vals { transition: transform 0.45s cubic-bezier(0.3, 0.7, 0.3, 1); }
+.fb.exploded .fb-vals { transform: translateY(-26px); }
+.fb .fb-val-pill { fill: var(--card); stroke: var(--ink); stroke-width: 1.6; }
+.fb .fb-val-text { font-size: 11.5px; font-weight: 700; fill: var(--ink); }
+.fb .fb-head.empty .pill { stroke-dasharray: 4 3; fill: var(--paper); }
+.fb .fb-head.empty .pill-text { fill: var(--ink-soft); font-weight: 400; }
+.fb.no-labels .fb-labels { display: none; }
+
 @media (prefers-reduced-motion: reduce) {
-  .board .fwd { animation: none; }
-  .board .lift, .board .chip { transition: none; }
+  .board .fwd, .fb .fb-wire.hot { animation: none; }
+  .board .lift, .board .chip, .fb .fb-lift, .fb .fb-vals { transition: none; }
 }
 
 /* ---------- telas menores ---------- */
@@ -327,6 +374,7 @@ footer { margin-top: 40px; color: var(--ink-soft); font-size: 12px; border-top: 
   .actions { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; right: 190px; }
   .tip { margin-top: 0; max-width: 360px; }
   .board-host { inset: 54px 0 0 0; }
+  .fb { width: calc(100% - 130px); } /* deixa a coluna de Ciclo/Status/CPI livre */
   .status { top: 0; }
 }
 @media (max-width: 1100px) {

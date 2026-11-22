@@ -8,6 +8,7 @@ import { ModelKind, Session } from '../core/session';
 import { FIGURES, Figure } from '../programs';
 import { Board } from './board';
 import { DatapathView } from './datapath';
+import { FullBoard } from './fullboard';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -39,8 +40,11 @@ let exploded = false;
 let labels = true;
 let cachesOn = false;
 let cacheCfg: CacheConfig = { ...DEFAULT_CACHE };
+let boardKind: 'simple' | 'full' = store.get('board') === 'full' ? 'full' : 'simple';
 
 const board = new Board($('board-host'));
+const fullBoard = new FullBoard($('board-host'));
+const boards = [board, fullBoard];
 const datapath = new DatapathView($('datapath'));
 
 const cacheSetup = (): CacheSetup | null => (cachesOn ? { i: { ...cacheCfg }, d: { ...cacheCfg } } : null);
@@ -106,7 +110,7 @@ function assembleAndReset() {
     } else throw e;
   }
   const cs = cacheSetup();
-  board.setOptions({ model, caches: cs ? { i: geom(cs.i), d: geom(cs.d) } : null });
+  for (const b of boards) b.setOptions({ model, caches: cs ? { i: geom(cs.i), d: geom(cs.d) } : null });
   datapath.setModel(model, !!cs);
   refreshControls();
   render();
@@ -192,6 +196,7 @@ function statusFor(rep: CycleReport | undefined): string {
 function render() {
   const rep = session?.lastReport;
   board.render(rep);
+  fullBoard.render(rep);
   $('st-cycle').textContent = String(session?.cycle ?? 0);
   $('st-status').textContent = statusFor(rep);
   const st = session?.machine.stats;
@@ -449,6 +454,7 @@ function cacheTable(c: Cache, title: string, data: boolean, state: 'hit' | 'miss
 
 function refreshControls() {
   document.querySelectorAll<HTMLButtonElement>('[data-model]').forEach((b) => b.classList.toggle('on', b.dataset.model === model));
+  document.querySelectorAll<HTMLButtonElement>('[data-board]').forEach((b) => b.classList.toggle('on', b.dataset.board === boardKind));
   const fwd = $<HTMLButtonElement>('fwd');
   fwd.textContent = forwarding ? 'On' : 'Off';
   fwd.classList.toggle('on', forwarding);
@@ -499,7 +505,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) => {
       case 'assemble': assembleAndReset(); break;
       case 'explode':
         exploded = !exploded;
-        board.setOptions({ exploded });
+        for (const b of boards) b.setOptions({ exploded });
         render();
         break;
     }
@@ -511,6 +517,17 @@ document.querySelectorAll<HTMLButtonElement>('[data-model]').forEach((b) => {
     model = b.dataset.model as ModelKind;
     assembleAndReset();
   };
+});
+/** Alterna entre a placa simples (5 estágios) e a completa (todos os componentes). */
+function setBoardKind(k: 'simple' | 'full') {
+  boardKind = k;
+  store.set('board', k);
+  board.svg.style.display = k === 'simple' ? '' : 'none';
+  fullBoard.show(k === 'full');
+  refreshControls();
+}
+document.querySelectorAll<HTMLButtonElement>('[data-board]').forEach((b) => {
+  b.onclick = () => setBoardKind(b.dataset.board as 'simple' | 'full');
 });
 $('fwd').onclick = () => {
   forwarding = !forwarding;
@@ -531,11 +548,11 @@ $('labels').onclick = () => {
   labels = !labels;
   $('labels').textContent = labels ? 'On' : 'Off';
   $('labels').classList.toggle('on', labels);
-  board.setOptions({ labels });
+  for (const b of boards) b.setOptions({ labels });
 };
 const wobble = $<HTMLInputElement>('wobble-range');
 wobble.oninput = () => {
-  board.setWobble(Number(wobble.value));
+  for (const b of boards) b.setWobble(Number(wobble.value));
   store.set('wobble', wobble.value);
 };
 $<HTMLInputElement>('speed').oninput = () => {
@@ -569,6 +586,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') { stop(); step(); e.preventDefault(); }
   else if (e.key === 'ArrowLeft') { back(); e.preventDefault(); }
   else if (e.key === ' ') { run(); e.preventDefault(); }
+  else if (e.key.toLowerCase() === 'p') setBoardKind(boardKind === 'simple' ? 'full' : 'simple');
   else if (e.key.toLowerCase() === 'e') document.querySelector<HTMLButtonElement>('[data-act="explode"]')!.click();
 });
 
@@ -578,6 +596,7 @@ setAccent(store.get('accent') ?? '#6D93D9');
 const w = store.get('wobble');
 if (w) {
   wobble.value = w;
-  board.setWobble(Number(w));
+  for (const b of boards) b.setWobble(Number(w));
 }
 selectFigure(FIGURES[0]);
+setBoardKind(boardKind);

@@ -10,6 +10,7 @@ Simulador didático de um processador **RISC-V RV32I**, com dois modelos de exec
 A interface tem duas vistas do processador:
 
 - **Bancada**: o pipeline como uma placa isométrica em traço de nanquim. Cada estágio é um chip, as instruções aparecem em etiquetas, os forwardings acendem trilhas e as caches (I$ e D$) acendem em acerto ou falta.
+- **Placa completa**: a mesma bancada em nanquim colorido (vista oblíqua, para caber na largura da tela), mas com todos os componentes do caminho de dados como chips na placa e os fios como trilhas que acendem a cada ciclo (seletor "Placa: Simples | Completa", tecla `P`).
 - **Caminho de dados**: todos os componentes da microarquitetura desenhados explicitamente (PC, somador +4, memória de instruções/I-cache, controle, banco de registradores, gerador de imediato, multiplexadores, ALU, somador de desvio, memória de dados/D-cache, mux de write-back, unidade de forwarding, unidade de hazard e os registradores de pipeline IF/ID, ID/EX, EX/MEM, MEM/WB). A cada ciclo acendem os fios usados e aparecem os valores que passam por eles.
 
 Um painel mostra o conteúdo de cada cache (válido, sujo, tag, bloco e dados), a divisão do endereço em tag/índice/deslocamento, a taxa de acerto e o AMAT.
@@ -56,6 +57,7 @@ npm run build      # gera dist/ (site estático, pode ir para o GitHub Pages)
 | Sessão: histórico para **voltar no tempo** (estado + diário de escritas na memória) | `src/core/session.ts` |
 | Trilha de experimentos ("Fig. 01…10") | `src/programs.ts` |
 | Bancada isométrica | `src/ui/board.ts` |
+| Placa completa (nanquim, todos os componentes) | `src/ui/fullboard.ts` |
 | Caminho de dados com todos os componentes | `src/ui/datapath.ts` |
 | Interface (SVG gerado por código, sem imagens) | `src/ui/main.ts` |
 | Imagem Docker | `Dockerfile`, `docker-compose.yml` |
@@ -72,7 +74,7 @@ Mapa de memória: código a partir de `0x0000`, dados a partir de `0x1000`, pilh
 
 ## Atalhos
 
-`→` passo · `←` voltar · `espaço` roda/pausa · `E` vista explodida · `Ctrl+Enter` monta o código do editor.
+`→` passo · `←` voltar · `espaço` roda/pausa · `E` vista explodida · `P` placa simples/completa · `Ctrl+Enter` monta o código do editor.
 
 ## Próximos passos
 

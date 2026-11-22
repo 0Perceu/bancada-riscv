@@ -8,7 +8,7 @@ import { ABI_NAMES } from '../core/isa';
 import type { CycleReport, Datapath, StageName } from '../core/machine';
 import { Pt, el, polyline } from './iso';
 
-type WireId =
+export type WireId =
   | 'pc_imem' | 'pc_add' | 'add_mux' | 'br_mux' | 'mux_pc' | 'imem_ifid' | 'pc_ifid'
   | 'ifid_rs1' | 'ifid_rs2' | 'ifid_imm' | 'ifid_ctl' | 'regA' | 'regB' | 'imm_idex' | 'ctl_idex' | 'pc_idex'
   | 'idexA' | 'idexB' | 'fa_alu' | 'fb_src' | 'imm_src' | 'src_alu' | 'alu_exmem' | 'pc_badd' | 'imm_badd' | 'badd_out'
@@ -16,7 +16,7 @@ type WireId =
   | 'exmem_addr' | 'exmem_wd' | 'exmem_bypass' | 'dmem_memwb' | 'ctl_mem'
   | 'memwb_mem' | 'memwb_alu' | 'wb_regs' | 'rd_regs';
 
-const WIRES: Record<WireId, Pt[]> = {
+export const WIRES: Record<WireId, Pt[]> = {
   // IF
   pc_imem: [[95, 235], [125, 235]],
   pc_add: [[105, 235], [105, 130], [125, 130]],
@@ -66,13 +66,13 @@ const WIRES: Record<WireId, Pt[]> = {
 };
 
 /** Fios que só existem no pipeline (forwarding). */
-const PIPE_ONLY: WireId[] = ['exmem_fa', 'exmem_fb', 'memwb_fa', 'memwb_fb'];
+export const PIPE_ONLY: WireId[] = ['exmem_fa', 'exmem_fb', 'memwb_fa', 'memwb_fb'];
 
-type CompId = 'pc' | 'pcmux' | 'add4' | 'imem' | 'ctl' | 'regs' | 'imm' | 'hazard' | 'fa' | 'fb' | 'src' | 'alu' | 'badd' | 'fwd' | 'dmem' | 'wbmux';
+export type CompId = 'pc' | 'pcmux' | 'add4' | 'imem' | 'ctl' | 'regs' | 'imm' | 'hazard' | 'fa' | 'fb' | 'src' | 'alu' | 'badd' | 'fwd' | 'dmem' | 'wbmux';
 
-const LATCH_X = [255, 485, 765, 985];
-const LATCH_NAMES = ['IF/ID', 'ID/EX', 'EX/MEM', 'MEM/WB'];
-const STAGE_X: Record<StageName, number> = { IF: 130, ID: 370, EX: 630, MEM: 880, WB: 1090 };
+export const LATCH_X = [255, 485, 765, 985];
+export const LATCH_NAMES = ['IF/ID', 'ID/EX', 'EX/MEM', 'MEM/WB'];
+export const STAGE_X: Record<StageName, number> = { IF: 130, ID: 370, EX: 630, MEM: 880, WB: 1090 };
 
 const hex = (v: number) => '0x' + (v >>> 0).toString(16);
 const reg = (r: number) => `x${r}`;
@@ -222,135 +222,13 @@ export class DatapathView {
   }
 
   render(rep: CycleReport | undefined) {
-    const on = new Set<WireId>();
-    const hot = new Set<WireId>();
-    const comps = new Map<CompId, string>();
-    const set = (k: string, v: string) => (this.texts.get(k)!.textContent = v);
-    for (const k of this.texts.keys()) set(k, '');
-    const single = this.model === 'single';
-
-    (Object.keys(STAGE_X) as StageName[]).forEach((s) => {
-      const slot = rep?.stages[s];
-      const head = this.heads.get(s)!;
-      let t = slot ? slot.text.replace(/\s+#.*$/, '') : rep ? 'bolha' : '';
-      if (t.length > 22) t = t.slice(0, 21) + '…';
-      if (slot && slot.status !== 'ok') t += slot.status === 'miss' ? ' · MISS' : slot.status === 'stall' ? ' · STALL' : ' · FLUSH';
-      head.textContent = single && s !== 'EX' ? '' : t;
-      head.classList.toggle('empty', !slot);
-    });
-    if (single && rep?.stages.EX) this.heads.get('EX')!.textContent = rep.stages.EX.text.replace(/\s+#.*$/, '');
-
-    const dp: Datapath | undefined = rep?.dp;
-    if (rep && dp) {
-      const st = rep.stages;
-      // ---- IF ----
-      if (st.IF) {
-        on.add('pc_imem');
-        comps.set('pc', 'on');
-        comps.set('imem', dp.icache === 'miss' || dp.icache === 'wait' ? 'miss' : 'on');
-        if (st.IF.status === 'ok') {
-          for (const w of ['pc_add', 'imem_ifid', 'pc_ifid'] as WireId[]) on.add(w);
-          comps.set('add4', 'on');
-        }
-      }
-      if (dp.pcSrc === 'pc4') {
-        on.add('add_mux');
-        on.add('mux_pc');
-        comps.set('pcmux', 'on');
-      } else if (dp.pcSrc === 'branch') {
-        hot.add('br_mux');
-        hot.add('mux_pc');
-        comps.set('pcmux', 'hot');
-      }
-      set('pc', `PC ${hex(dp.pc)}`);
-      if (dp.icache) set('icache', { hit: 'acerto', miss: 'FALTA', wait: 'esperando…' }[dp.icache]);
-
-      // ---- ID ----
-      if (dp.id && st.ID && st.ID.status !== 'squash') {
-        const d = dp.id;
-        on.add('ifid_ctl');
-        on.add('ctl_idex');
-        on.add('pc_idex');
-        comps.set('ctl', 'on');
-        comps.set('regs', 'on');
-        if (d.readsRs1) on.add('ifid_rs1'), on.add('regA');
-        if (d.readsRs2) on.add('ifid_rs2'), on.add('regB');
-        if (d.usesImm) {
-          on.add('ifid_imm');
-          on.add('imm_idex');
-          comps.set('imm', 'on');
-          set('immv', `imm = ${d.imm}`);
-        }
-        const parts = [d.readsRs1 ? `rs1=${reg(d.rs1)}` : '', d.readsRs2 ? `rs2=${reg(d.rs2)}` : ''].filter(Boolean);
-        set('regs', parts.join('  '));
-      }
-      if (dp.hazard) comps.set('hazard', 'alert');
-
-      // ---- EX ----
-      if (dp.ex && st.EX && st.EX.status === 'ok') {
-        const x = dp.ex;
-        comps.set('alu', 'on');
-        on.add('alu_exmem');
-        on.add('ctl_ex');
-        const a = { reg: 'idexA', exmem: 'exmem_fa', memwb: 'memwb_fa' }[x.fwdA] as WireId;
-        (x.fwdA === 'reg' ? on : hot).add(a);
-        on.add('fa_alu');
-        comps.set('fa', x.fwdA === 'reg' ? 'on' : 'hot');
-        const b = { reg: 'idexB', exmem: 'exmem_fb', memwb: 'memwb_fb' }[x.fwdB] as WireId;
-        const isStore = ['sb', 'sh', 'sw'].includes(x.op);
-        const usesRs2 = !x.aluSrcImm || isStore;
-        if (usesRs2) {
-          (x.fwdB === 'reg' ? on : hot).add(b);
-          comps.set('fb', x.fwdB === 'reg' ? 'on' : 'hot');
-        }
-        comps.set('src', 'on');
-        on.add('src_alu');
-        on.add(x.aluSrcImm ? 'imm_src' : 'fb_src');
-        if (isStore) on.add('b_exmem');
-        if (x.fwdA !== 'reg' || (usesRs2 && x.fwdB !== 'reg')) comps.set('fwd', 'hot');
-        if (x.isBranch) {
-          comps.set('badd', 'on');
-          on.add('pc_badd');
-          on.add('imm_badd');
-          on.add('badd_out');
-          set('br', x.taken ? `tomado → ${hex(x.target)}` : 'não tomado');
-        }
-        set('a', `A=${x.a}`);
-        set('b', x.aluSrcImm ? `B=imm ${x.imm}` : `B=${x.b}`);
-        set('res', `${x.result}`);
-        set('alu-op', x.op);
-      }
-
-      // ---- MEM ----
-      if (dp.mem && st.MEM) {
-        const m = dp.mem;
-        on.add('ctl_mem');
-        const waiting = st.MEM.status === 'miss';
-        if (m.kind === 'none') {
-          on.add('exmem_bypass');
-        } else {
-          on.add('exmem_addr');
-          if (m.kind === 'store') on.add('exmem_wd');
-          if (m.kind === 'load' && !waiting) on.add('dmem_memwb');
-          comps.set('dmem', m.cache === 'miss' || m.cache === 'wait' ? 'miss' : 'on');
-          set('mem', waiting ? `end. ${m.addr}` : m.kind === 'load' ? `leu ${m.value} de ${m.addr}` : `escreveu ${m.value} em ${m.addr}`);
-          if (m.cache) set('dcache', { hit: 'acerto', miss: 'FALTA', wait: 'esperando…' }[m.cache]);
-        }
-      }
-
-      // ---- WB ----
-      if (dp.wb && st.WB) {
-        const w = dp.wb;
-        comps.set('wbmux', 'on');
-        on.add(w.src === 'mem' ? 'memwb_mem' : 'memwb_alu');
-        if (w.write) {
-          on.add('wb_regs');
-          on.add('rd_regs');
-          set('wb', `${reg(w.rd)} (${ABI_NAMES[w.rd]}) ← ${w.value}`);
-        }
-      }
+    const { on, hot, comps, texts, heads } = computeDatapath(rep, this.model);
+    for (const [k, t] of this.texts) t.textContent = texts.get(k) ?? '';
+    for (const [s, h] of this.heads) {
+      const v = heads.get(s)!;
+      h.textContent = v.text;
+      h.classList.toggle('empty', v.empty);
     }
-
     for (const [id, p] of this.wires) {
       p.classList.toggle('on', on.has(id));
       p.classList.toggle('hot', hot.has(id));
@@ -364,4 +242,144 @@ export class DatapathView {
     const layer = this.svg.querySelector('.wires')!;
     for (const [id, p] of this.wires) if (on.has(id) || hot.has(id)) layer.appendChild(p);
   }
+}
+
+export interface DatapathState {
+  on: Set<WireId>;
+  hot: Set<WireId>;
+  comps: Map<CompId, string>;
+  texts: Map<string, string>;
+  heads: Map<StageName, { text: string; empty: boolean }>;
+}
+
+/** O que acende em cada ciclo: fios usados, componentes ativos e valores. Compartilhado pela vista 2D e pela placa completa. */
+export function computeDatapath(rep: CycleReport | undefined, model: 'single' | 'pipeline'): DatapathState {
+  const on = new Set<WireId>();
+  const hot = new Set<WireId>();
+  const comps = new Map<CompId, string>();
+  const texts = new Map<string, string>();
+  const heads = new Map<StageName, { text: string; empty: boolean }>();
+  const set = (k: string, v: string) => texts.set(k, v);
+  const single = model === 'single';
+
+  (Object.keys(STAGE_X) as StageName[]).forEach((s) => {
+    const slot = rep?.stages[s];
+    let t = slot ? slot.text.replace(/\s+#.*$/, '') : rep ? 'bolha' : '';
+    if (t.length > 22) t = t.slice(0, 21) + '…';
+    if (slot && slot.status !== 'ok') t += slot.status === 'miss' ? ' · MISS' : slot.status === 'stall' ? ' · STALL' : ' · FLUSH';
+    heads.set(s, { text: single && s !== 'EX' ? '' : t, empty: !slot });
+  });
+  if (single && rep?.stages.EX) heads.set('EX', { text: rep.stages.EX.text.replace(/\s+#.*$/, ''), empty: false });
+
+  const dp: Datapath | undefined = rep?.dp;
+  if (rep && dp) {
+    const st = rep.stages;
+    // ---- IF ----
+    if (st.IF) {
+      on.add('pc_imem');
+      comps.set('pc', 'on');
+      comps.set('imem', dp.icache === 'miss' || dp.icache === 'wait' ? 'miss' : 'on');
+      if (st.IF.status === 'ok') {
+        for (const w of ['pc_add', 'imem_ifid', 'pc_ifid'] as WireId[]) on.add(w);
+        comps.set('add4', 'on');
+      }
+    }
+    if (dp.pcSrc === 'pc4') {
+      on.add('add_mux');
+      on.add('mux_pc');
+      comps.set('pcmux', 'on');
+    } else if (dp.pcSrc === 'branch') {
+      hot.add('br_mux');
+      hot.add('mux_pc');
+      comps.set('pcmux', 'hot');
+    }
+    set('pc', `PC ${hex(dp.pc)}`);
+    if (dp.icache) set('icache', { hit: 'acerto', miss: 'FALTA', wait: 'esperando…' }[dp.icache]);
+
+    // ---- ID ----
+    if (dp.id && st.ID && st.ID.status !== 'squash') {
+      const d = dp.id;
+      on.add('ifid_ctl');
+      on.add('ctl_idex');
+      on.add('pc_idex');
+      comps.set('ctl', 'on');
+      comps.set('regs', 'on');
+      if (d.readsRs1) on.add('ifid_rs1'), on.add('regA');
+      if (d.readsRs2) on.add('ifid_rs2'), on.add('regB');
+      if (d.usesImm) {
+        on.add('ifid_imm');
+        on.add('imm_idex');
+        comps.set('imm', 'on');
+        set('immv', `imm = ${d.imm}`);
+      }
+      const parts = [d.readsRs1 ? `rs1=${reg(d.rs1)}` : '', d.readsRs2 ? `rs2=${reg(d.rs2)}` : ''].filter(Boolean);
+      set('regs', parts.join('  '));
+    }
+    if (dp.hazard) comps.set('hazard', 'alert');
+
+    // ---- EX ----
+    if (dp.ex && st.EX && st.EX.status === 'ok') {
+      const x = dp.ex;
+      comps.set('alu', 'on');
+      on.add('alu_exmem');
+      on.add('ctl_ex');
+      const a = { reg: 'idexA', exmem: 'exmem_fa', memwb: 'memwb_fa' }[x.fwdA] as WireId;
+      (x.fwdA === 'reg' ? on : hot).add(a);
+      on.add('fa_alu');
+      comps.set('fa', x.fwdA === 'reg' ? 'on' : 'hot');
+      const b = { reg: 'idexB', exmem: 'exmem_fb', memwb: 'memwb_fb' }[x.fwdB] as WireId;
+      const isStore = ['sb', 'sh', 'sw'].includes(x.op);
+      const usesRs2 = !x.aluSrcImm || isStore;
+      if (usesRs2) {
+        (x.fwdB === 'reg' ? on : hot).add(b);
+        comps.set('fb', x.fwdB === 'reg' ? 'on' : 'hot');
+      }
+      comps.set('src', 'on');
+      on.add('src_alu');
+      on.add(x.aluSrcImm ? 'imm_src' : 'fb_src');
+      if (isStore) on.add('b_exmem');
+      if (x.fwdA !== 'reg' || (usesRs2 && x.fwdB !== 'reg')) comps.set('fwd', 'hot');
+      if (x.isBranch) {
+        comps.set('badd', 'on');
+        on.add('pc_badd');
+        on.add('imm_badd');
+        on.add('badd_out');
+        set('br', x.taken ? `tomado → ${hex(x.target)}` : 'não tomado');
+      }
+      set('a', `A=${x.a}`);
+      set('b', x.aluSrcImm ? `B=imm ${x.imm}` : `B=${x.b}`);
+      set('res', `${x.result}`);
+      set('alu-op', x.op);
+    }
+
+    // ---- MEM ----
+    if (dp.mem && st.MEM) {
+      const m = dp.mem;
+      on.add('ctl_mem');
+      const waiting = st.MEM.status === 'miss';
+      if (m.kind === 'none') {
+        on.add('exmem_bypass');
+      } else {
+        on.add('exmem_addr');
+        if (m.kind === 'store') on.add('exmem_wd');
+        if (m.kind === 'load' && !waiting) on.add('dmem_memwb');
+        comps.set('dmem', m.cache === 'miss' || m.cache === 'wait' ? 'miss' : 'on');
+        set('mem', waiting ? `end. ${m.addr}` : m.kind === 'load' ? `leu ${m.value} de ${m.addr}` : `escreveu ${m.value} em ${m.addr}`);
+        if (m.cache) set('dcache', { hit: 'acerto', miss: 'FALTA', wait: 'esperando…' }[m.cache]);
+      }
+    }
+
+    // ---- WB ----
+    if (dp.wb && st.WB) {
+      const w = dp.wb;
+      comps.set('wbmux', 'on');
+      on.add(w.src === 'mem' ? 'memwb_mem' : 'memwb_alu');
+      if (w.write) {
+        on.add('wb_regs');
+        on.add('rd_regs');
+        set('wb', `${reg(w.rd)} (${ABI_NAMES[w.rd]}) ← ${w.value}`);
+      }
+    }
+  }
+  return { on, hot, comps, texts, heads };
 }
