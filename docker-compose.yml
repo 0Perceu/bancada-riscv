@@ -1,0 +1,7 @@
+services:
+  bancada-riscv:
+    build: .
+    image: bancada-riscv
+    ports:
+      - "8080:80"
+    restart: unless-stopped

@@ -18,6 +18,20 @@ npm test           # testes do núcleo
 npm run build      # gera dist/ (site estático, pode ir para o GitHub Pages)
 ```
 
+### Com Docker
+
+Só precisa do [Docker Desktop](https://www.docker.com/products/docker-desktop/). Na pasta do projeto:
+
+```bash
+docker compose up --build    # monta a imagem (roda os testes e o build) e sobe o servidor
+```
+
+Abra http://localhost:8080. Para parar: `Ctrl+C` ou `docker compose down`.
+
+Sem o compose, o equivalente é `docker build -t bancada-riscv .` e `docker run -p 8080:80 bancada-riscv`.
+
+A imagem é feita em duas etapas: o Node instala as dependências, roda `npm test` e gera o `dist/` (se um teste falhar, a imagem não é criada); depois só o `dist/` vai para um nginx leve.
+
 ## O que tem
 
 | Parte | Onde |
