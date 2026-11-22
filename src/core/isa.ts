@@ -122,3 +122,6 @@ export function disassemble(d: Decoded): string {
     default: return `.word 0x${(d.raw >>> 0).toString(16).padStart(8, '0')}`;
   }
 }
+
+/** A entrada B da ALU recebe o imediato (e não rs2)? */
+export const usesImm = (d: Decoded) => d.fmt === 'I' || d.fmt === 'S' || d.fmt === 'U' || d.fmt === 'J';

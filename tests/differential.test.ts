@@ -56,4 +56,31 @@ describe('teste diferencial: pipeline x monociclo', () => {
       }
     }
   });
+
+  it('com caches (várias geometrias), o resultado é o mesmo e só o tempo muda', () => {
+    const geometries = [
+      { sets: 1, ways: 1, blockBytes: 4, missPenalty: 3 },
+      { sets: 4, ways: 1, blockBytes: 16, missPenalty: 5 },
+      { sets: 2, ways: 2, blockBytes: 8, missPenalty: 2 },
+      { sets: 8, ways: 4, blockBytes: 32, missPenalty: 10 },
+    ];
+    for (let seed = 1; seed <= 120; seed++) {
+      const src = randomProgram(seed);
+      const ref = new Session(src, { model: 'single', forwarding: true });
+      ref.run();
+      const g = geometries[seed % geometries.length];
+      for (const model of ['single', 'pipeline'] as const) {
+        for (const forwarding of [true, false]) {
+          const s = new Session(src, { model, forwarding, caches: { i: g, d: { ...g, ways: Math.max(1, g.ways >> 1) } } });
+          s.run();
+          const tag = `seed ${seed} ${model} fw=${forwarding}`;
+          expect(s.done, tag).toBe(true);
+          expect(Array.from(s.machine.regs), tag).toEqual(Array.from(ref.machine.regs));
+          expect(s.mem.bytes.slice(0x1000, 0x1100), tag).toEqual(ref.mem.bytes.slice(0x1000, 0x1100));
+          expect(s.machine.stats.retired, tag).toBe(ref.machine.stats.retired);
+          expect(s.machine.icache!.stats.misses, tag).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
 });

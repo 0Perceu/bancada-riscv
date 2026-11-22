@@ -118,6 +118,57 @@ next:   addi t0, t0, -1
 done:   ret
 `;
 
+const VETOR = `# Soma de um vetor de 16 palavras, percorrido duas vezes.
+# 1ª volta: cada bloco novo é uma falta (localidade espacial ajuda:
+#   com blocos de 16 bytes, 1 falta traz 4 palavras).
+# 2ª volta: se o vetor cabe na cache, tudo é acerto (localidade temporal).
+.data
+v:      .word 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+soma:   .word 0
+
+.text
+        li   s1, 2           # voltas
+        li   a0, 0
+volta:  la   t0, v
+        li   t1, 16
+laco:   lw   t2, 0(t0)
+        add  a0, a0, t2
+        addi t0, t0, 4
+        addi t1, t1, -1
+        bnez t1, laco
+        addi s1, s1, -1
+        bnez s1, volta
+        la   t3, soma
+        sw   a0, 0(t3)       # a0 = 272
+        ecall
+`;
+
+const CONFLITO = `# Conflito: dois vetores a exatamente 64 bytes de distância.
+# Em mapeamento direto com 4 conjuntos de 16 bytes, a[i] e b[i]
+# caem no MESMO conjunto e se expulsam a cada acesso.
+# Troque "Vias" para 2 no painel de caches e veja as faltas sumirem.
+.data
+a:      .word 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+b:      .word 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160
+
+.text
+        la   t0, a
+        la   t1, b
+        li   t2, 16
+        li   a0, 0
+laco:   lw   t3, 0(t0)
+        lw   t4, 0(t1)
+        add  a0, a0, t3
+        add  a0, a0, t4
+        addi t0, t0, 4
+        addi t1, t1, 4
+        addi t2, t2, -1
+        bnez t2, laco
+        ecall                # a0 = 1496
+`;
+
+const CACHE_PADRAO = { i: { sets: 4, ways: 1, blockBytes: 16, missPenalty: 4 }, d: { sets: 4, ways: 1, blockBytes: 16, missPenalty: 4 } };
+
 export const FIGURES: Figure[] = [
   {
     id: 'fig01', group: 'Comece aqui', title: 'Monociclo', subtitle: 'uma instrução por ciclo',
@@ -174,5 +225,19 @@ export const FIGURES: Figure[] = [
     config: { model: 'pipeline', forwarding: true },
     intro: 'Um **bubble sort** com chamada de função (**call/ret**), laços aninhados, loads seguidos de uso e muitos desvios. É o teste mais completo da trilha.',
     source: BUBBLE,
+  },
+  {
+    id: 'fig09', group: 'Módulo 4 · Memória', title: 'Cache e localidade', subtitle: 'faltas, acertos e AMAT',
+    tagline: 'a 2ª volta no vetor só acerta',
+    config: { model: 'pipeline', forwarding: true, caches: CACHE_PADRAO },
+    intro: 'Agora a busca passa por uma **I-cache** e os loads e stores por uma **D-cache**. Uma **falta** custa ciclos esperando a memória: no IF entram bolhas; no MEM o pipeline inteiro **congela**. Veja no painel de caches as linhas sendo preenchidas e a taxa de acerto subir na 2ª volta.',
+    source: VETOR,
+  },
+  {
+    id: 'fig10', group: 'Módulo 4 · Memória', title: 'Conflito na cache', subtitle: 'mapeamento direto x associativa',
+    tagline: 'dois vetores brigando pelo mesmo conjunto',
+    config: { model: 'pipeline', forwarding: true, caches: CACHE_PADRAO },
+    intro: 'Com **mapeamento direto**, endereços que caem no mesmo conjunto se expulsam mesmo com a cache quase vazia: são as **faltas de conflito**. Mude **Vias** para 2 no painel de caches e monte de novo: o mesmo programa passa a acertar quase sempre.',
+    source: CONFLITO,
   },
 ];

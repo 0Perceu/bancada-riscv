@@ -4,7 +4,7 @@ import { STAGES } from '../core/machine';
 import { C, P, Pt, box, el, polyline, topPlane, topPlaneY } from './iso';
 
 const BX = 50;
-const BY = 90;
+const BY = 150;
 const BW = 112;
 const BD = 128;
 const BH = 34;
@@ -26,6 +26,13 @@ export interface BoardOptions {
   model: 'single' | 'pipeline';
   labels: boolean;
   exploded: boolean;
+  /** Desenha as caches L1 (I$ atrás do IF, D$ atrás do MEM) com a geometria em texto. */
+  caches: { i: string; d: string } | null;
+}
+
+interface CacheView {
+  group: SVGGElement;
+  state: SVGTextElement;
 }
 
 interface StageView {
@@ -49,7 +56,8 @@ export class Board {
   private turbulence!: SVGFETurbulenceElement;
   private displace!: SVGFEDisplacementMapElement;
   private wobbleTimer = 0;
-  private opts: BoardOptions = { model: 'pipeline', labels: true, exploded: false };
+  private opts: BoardOptions = { model: 'pipeline', labels: true, exploded: false, caches: null };
+  private cacheViews: { i?: CacheView; d?: CacheView } = {};
 
   constructor(host: HTMLElement) {
     this.svg = el('svg', { class: 'board', role: 'img', 'aria-label': 'Caminho de dados isométrico' }) as SVGSVGElement;
@@ -62,7 +70,8 @@ export class Board {
   }
 
   setOptions(o: Partial<BoardOptions>) {
-    const rebuild = o.model !== undefined && o.model !== this.opts.model;
+    const rebuild = (o.model !== undefined && o.model !== this.opts.model)
+      || (o.caches !== undefined && JSON.stringify(o.caches) !== JSON.stringify(this.opts.caches));
     this.opts = { ...this.opts, ...o };
     if (rebuild) this.build();
     this.svg.classList.toggle('no-labels', !this.opts.labels);
@@ -85,7 +94,7 @@ export class Board {
     this.stages.clear();
     this.latchGroups = [];
     const W = BX * 2 + STEP * 4 + BW;
-    const D = BY * 2 + BD + 20;
+    const D = BY + BD + 110;
     const corners = [P(0, 0, 0), P(W, 0, 0), P(0, D, 0), P(W, D, 0), P(0, 0, 150)];
     const xs = corners.map((p) => p[0]);
     const ys = corners.map((p) => p[1]);
@@ -133,6 +142,13 @@ export class Board {
     const exx = this.stageX(2) + BW / 2, ifx = this.stageX(0) + BW / 2;
     polyline(traces, [P(exx, BY, PCB_Z), P(exx, BY - 36, PCB_Z), P(ifx, BY - 36, PCB_Z), P(ifx, BY, PCB_Z)], { class: 'trace back' });
 
+    // caches L1 atrás dos estágios que acessam a memória
+    this.cacheViews = {};
+    if (this.opts.caches) {
+      this.cacheViews.i = this.buildCache(0, 'I$', 'cache de instruções', this.opts.caches.i);
+      this.cacheViews.d = this.buildCache(3, 'D$', 'cache de dados', this.opts.caches.d);
+    }
+
     // estágios
     const order: Array<{ kind: 'stage'; i: number } | { kind: 'latch'; i: number }> = [];
     for (let i = 0; i < 5; i++) {
@@ -167,6 +183,34 @@ export class Board {
     } finally {
       if (hadNoLabels) this.svg.classList.add('no-labels');
     }
+  }
+
+  private buildCache(stage: number, name: string, sub: string, geom: string): CacheView {
+    const x = this.stageX(stage) + 6;
+    const y = 30;
+    const w = BW - 12;
+    const d = 70;
+    const traces = el('g', { class: 'traces' }, this.root);
+    for (const dx of [w * 0.3, w * 0.5, w * 0.7]) {
+      polyline(traces, [P(x + dx, y + d, PCB_Z), P(x + dx, BY, PCB_Z)], { class: 'trace' });
+    }
+    const group = el('g', { class: 'lift cache-chip' }, this.root) as SVGGElement;
+    box(group, x, y, PCB_Z, w, d, 22, { top: 'var(--cache-top)', left: 'var(--cache-left)', right: 'var(--cache-right)' });
+    const t = el('text', { transform: topPlane(x + 12, y + 30, PCB_Z + 22), class: 'cache-name' }, group);
+    t.textContent = name;
+    const g = el('title', {}, group);
+    g.textContent = `${sub}: ${geom}`;
+    const state = el('text', { transform: topPlane(x + 12, y + 54, PCB_Z + 22), class: 'cache-state' }, group) as SVGTextElement;
+    const [lx, ly] = P(x + w - 12, y + 12, PCB_Z + 22);
+    el('ellipse', { cx: lx, cy: ly, rx: 5, ry: 3, class: 'led' }, group);
+    return { group, state };
+  }
+
+  private renderCache(v: CacheView | undefined, st: 'hit' | 'miss' | 'wait' | null | undefined) {
+    if (!v) return;
+    v.group.classList.remove('hit', 'miss', 'wait');
+    if (st) v.group.classList.add(st);
+    v.state.textContent = st === 'hit' ? 'ACERTO' : st === 'miss' ? 'FALTA' : st === 'wait' ? 'ESPERA' : '';
   }
 
   private buildLatch(i: number) {
@@ -223,7 +267,7 @@ export class Board {
     for (const name of STAGES) {
       const v = this.stages.get(name)!;
       const s: Slot | undefined = rep?.stages[name];
-      v.group.classList.remove('busy', 'stall', 'squash', 'bubble');
+      v.group.classList.remove('busy', 'stall', 'squash', 'bubble', 'miss');
       if (!s) {
         v.group.classList.add(rep ? 'bubble' : 'idle');
         this.setLabel(v, rep ? 'bolha' : '—', null);
@@ -233,9 +277,11 @@ export class Board {
       v.group.classList.add('busy');
       if (s.status !== 'ok') v.group.classList.add(s.status);
       const showText = !single || name === 'EX';
-      this.setLabel(v, showText ? s.text.replace(/\s+#.*$/, '') : '', s.status === 'stall' ? 'STALL' : s.status === 'squash' ? 'FLUSH' : null);
+      this.setLabel(v, showText ? s.text.replace(/\s+#.*$/, '') : '', s.status === 'stall' ? 'STALL' : s.status === 'squash' ? 'FLUSH' : s.status === 'miss' ? 'MISS' : null);
       v.label.style.display = showText ? '' : 'none';
     }
+    this.renderCache(this.cacheViews.i, rep?.dp?.icache);
+    this.renderCache(this.cacheViews.d, rep?.dp?.mem?.cache);
     // forwarding: trilhas acesas na frente da placa, do latch de origem até a entrada da ALU (EX)
     this.fwdLayer.replaceChildren();
     const seen = new Set<string>();

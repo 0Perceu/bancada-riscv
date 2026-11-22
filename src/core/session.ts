@@ -1,6 +1,6 @@
 /** Sessão de simulação: monta, carrega, executa e guarda histórico para voltar no tempo. */
 import { Program, assemble } from './assembler';
-import { CycleReport, Machine, loadProgram } from './machine';
+import { CacheSetup, CycleReport, Machine, loadProgram } from './machine';
 import { Memory } from './memory';
 import { Pipeline } from './pipeline';
 import { SingleCycle } from './single';
@@ -10,6 +10,8 @@ export type ModelKind = 'single' | 'pipeline';
 export interface SessionConfig {
   model: ModelKind;
   forwarding: boolean;
+  /** Caches L1 de instruções e de dados; null ou ausente = acesso direto à memória. */
+  caches?: CacheSetup | null;
 }
 
 interface HistoryEntry {
@@ -30,8 +32,8 @@ export class Session {
     this.program = assemble(source);
     loadProgram(this.mem, this.program);
     this.machine = config.model === 'single'
-      ? new SingleCycle(this.mem, this.program.sourceOf)
-      : new Pipeline(this.mem, { forwarding: config.forwarding }, this.program.sourceOf);
+      ? new SingleCycle(this.mem, this.program.sourceOf, config.caches)
+      : new Pipeline(this.mem, { forwarding: config.forwarding, caches: config.caches }, this.program.sourceOf);
   }
 
   get cycle() {

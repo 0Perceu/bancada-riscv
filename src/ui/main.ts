@@ -1,11 +1,13 @@
 import './style.css';
 import { AssemblyError } from '../core/assembler';
+import { Cache, CacheConfig, DEFAULT_CACHE, hitRate } from '../core/cache';
 import { ABI_NAMES } from '../core/isa';
-import { CycleReport, STAGES, StageName } from '../core/machine';
+import { CacheSetup, CycleReport, STAGES, StageName } from '../core/machine';
 import { DATA_BASE } from '../core/memory';
 import { ModelKind, Session } from '../core/session';
 import { FIGURES, Figure } from '../programs';
 import { Board } from './board';
+import { DatapathView } from './datapath';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -35,8 +37,14 @@ let prevRegs = new Int32Array(32);
 let running = 0;
 let exploded = false;
 let labels = true;
+let cachesOn = false;
+let cacheCfg: CacheConfig = { ...DEFAULT_CACHE };
 
 const board = new Board($('board-host'));
+const datapath = new DatapathView($('datapath'));
+
+const cacheSetup = (): CacheSetup | null => (cachesOn ? { i: { ...cacheCfg }, d: { ...cacheCfg } } : null);
+const geom = (c: CacheConfig) => `${c.sets} conj. × ${c.ways} via${c.ways > 1 ? "s" : ""} × ${c.blockBytes} B = ${c.sets * c.ways * c.blockBytes} B`;
 
 // ---------------- barra lateral ----------------
 function buildSidebar() {
@@ -64,6 +72,9 @@ function selectFigure(f: Figure) {
   fig = f;
   model = f.config.model;
   forwarding = f.config.forwarding;
+  cachesOn = !!f.config.caches;
+  if (f.config.caches) cacheCfg = { ...f.config.caches.d };
+  syncCacheForm();
   const idx = FIGURES.indexOf(f) + 1;
   $('fig-title').textContent = `Fig. ${String(idx).padStart(2, '0')} — ${f.title}`;
   $('fig-tagline').textContent = f.tagline;
@@ -80,7 +91,7 @@ function assembleAndReset() {
   const src = $<HTMLTextAreaElement>('code').value;
   const msg = $('asm-msg');
   try {
-    session = new Session(src, { model, forwarding });
+    session = new Session(src, { model, forwarding, caches: cacheSetup() });
     prevRegs = Int32Array.from(session.machine.regs);
     msg.textContent = `${session.program.text.length} instruções · ${session.program.data.length} bytes de dados`;
     msg.className = 'asm-msg ok';
@@ -94,7 +105,9 @@ function assembleAndReset() {
       setTip('ERRO DE MONTAGEM: VEJA O EDITOR');
     } else throw e;
   }
-  board.setOptions({ model });
+  const cs = cacheSetup();
+  board.setOptions({ model, caches: cs ? { i: geom(cs.i), d: geom(cs.d) } : null });
+  datapath.setModel(model, !!cs);
   refreshControls();
   render();
 }
@@ -151,6 +164,8 @@ function tipFor(rep: CycleReport | undefined): string {
   const ev = rep.events;
   const halt = ev.find((e) => e.kind === 'halt');
   if (halt) return `FIM EM ${rep.cycle} CICLOS. ← VOLTE PARA REVER`;
+  if (rep.stages.MEM?.status === 'miss') return 'FALTA NA D-CACHE: PIPELINE CONGELADO ATÉ O BLOCO CHEGAR';
+  if (rep.stages.IF?.status === 'miss') return 'FALTA NA I-CACHE: BOLHAS ENTRAM ENQUANTO O BLOCO CHEGA';
   const stall = ev.find((e) => e.kind === 'stall');
   if (stall) return `STALL: x${stall.reg} AINDA NÃO ESTÁ PRONTO`;
   if (ev.some((e) => e.kind === 'flush')) return 'FLUSH: DESVIO TOMADO, 2 INSTRUÇÕES DESCARTADAS';
@@ -158,7 +173,7 @@ function tipFor(rep: CycleReport | undefined): string {
   if (fw.length) return `FORWARDING DE ${[...new Set(fw.map((f) => 'x' + f.reg))].join(' E ')} PARA A ALU`;
   if (model === 'single') return 'INSTRUÇÃO CONCLUÍDA EM 1 CICLO';
   const holes = (['ID', 'EX', 'MEM', 'WB'] as StageName[]).filter((s) => !rep.stages[s]);
-  if (holes.length && rep.cycle > 4) return `BOLHA EM ${holes.join(', ')}: EFEITO DE UM STALL OU FLUSH ANTERIOR`;
+  if (holes.length && rep.cycle > 4) return `BOLHA EM ${holes.join(', ')}: EFEITO DE UM STALL, FLUSH OU FALTA DE CACHE ANTERIOR`;
   if (holes.length) return 'PIPELINE ENCHENDO';
   return 'PIPELINE CHEIO, SEM CONFLITOS';
 }
@@ -169,6 +184,7 @@ function statusFor(rep: CycleReport | undefined): string {
   if (running) return 'RODANDO';
   if (!rep) return 'PRONTO';
   if (rep.events.some((e) => e.kind === 'stall')) return 'STALL';
+  if (Object.values(rep.stages).some((x) => x?.status === 'miss')) return 'MISS';
   if (rep.events.some((e) => e.kind === 'flush')) return 'FLUSH';
   return 'PAUSADO';
 }
@@ -186,11 +202,13 @@ function render() {
   renderDiagram();
   renderRegs();
   renderMem();
+  datapath.render(rep);
+  renderCaches(rep);
   refreshControls();
 }
 
 const KIND_LABEL: Record<string, string> = {
-  stall: 'STALL', forward: 'FWD', flush: 'FLUSH', retire: 'OK', halt: 'FIM', load: 'LOAD', store: 'STORE', branch: 'DESVIO',
+  stall: 'STALL', forward: 'FWD', flush: 'FLUSH', retire: 'OK', halt: 'FIM', load: 'LOAD', store: 'STORE', branch: 'DESVIO', cache: 'CACHE',
 };
 
 function renderEvents(rep: CycleReport | undefined) {
@@ -236,7 +254,7 @@ function renderBackdrop(rep: CycleReport | undefined) {
       if (!slot) continue;
       const line = session.program.lineOf.get(slot.pc);
       if (line === undefined) continue;
-      const label = model === 'single' ? 'EXEC' : s + (slot.status === 'stall' ? '·STALL' : slot.status === 'squash' ? '·FLUSH' : '');
+      const label = model === 'single' ? 'EXEC' : s + (slot.status === 'stall' ? '·STALL' : slot.status === 'squash' ? '·FLUSH' : slot.status === 'miss' ? '·MISS' : '');
       tags.set(line, [...(tags.get(line) ?? []), label]);
     }
   }
@@ -245,7 +263,7 @@ function renderBackdrop(rep: CycleReport | undefined) {
       const t = tags.get(i + 1);
       const text = escapeHtml(l) || ' ';
       if (!t) return `<span class="ln">${text}</span>`;
-      const cls = t.some((x) => x.includes('STALL')) ? 'hl stall' : t.some((x) => x.includes('FLUSH')) ? 'hl squash' : 'hl';
+      const cls = t.some((x) => x.includes('STALL') || x.includes('MISS')) ? 'hl stall' : t.some((x) => x.includes('FLUSH')) ? 'hl squash' : 'hl';
       return `<span class="ln ${cls}">${text}<i class="stag">${t.join(' ')}</i></span>`;
     })
     .join('\n');
@@ -296,7 +314,7 @@ function renderDiagram() {
         const cell = r.cells.get(c.cycle);
         const now = i === cycles.length - 1 ? ' now' : '';
         if (!cell) return `<td class="empty${now}"></td>`;
-        const label = model === 'single' ? '●' : STAGE_SHORT[cell.st];
+        const label = model === 'single' ? '●' : cell.status === 'miss' ? '$' : STAGE_SHORT[cell.st];
         return `<td class="cell s-${cell.status}${now}">${label}</td>`;
       })
       .join('');
@@ -345,13 +363,15 @@ function renderMem() {
 function compare(src: string) {
   const host = $('compare');
   host.replaceChildren();
-  const configs: Array<[string, ModelKind, boolean]> = [
-    ['Monociclo', 'single', true],
-    ['Pipeline sem fwd', 'pipeline', false],
-    ['Pipeline com fwd', 'pipeline', true],
+  const configs: Array<[string, ModelKind, boolean, CacheSetup | null]> = [
+    ['Monociclo', 'single', true, null],
+    ['Pipeline sem fwd', 'pipeline', false, null],
+    ['Pipeline com fwd', 'pipeline', true, null],
   ];
-  const results = configs.map(([name, m, f]) => {
-    const s = new Session(src, { model: m, forwarding: f });
+  const cs = cacheSetup() ?? { i: { ...cacheCfg }, d: { ...cacheCfg } };
+  configs.push(['Pipeline com fwd + caches', 'pipeline', true, cs]);
+  const results = configs.map(([name, m, f, c]) => {
+    const s = new Session(src, { model: m, forwarding: f, caches: c });
     s.run(50000);
     return { name, ...s.machine.stats, done: s.done };
   });
@@ -362,13 +382,69 @@ function compare(src: string) {
     const cpi = r.retired ? (r.cycles / r.retired).toFixed(2) : '—';
     d.innerHTML = `<div class="cmp-head"><span>${r.name}</span><b>${r.cycles} ciclos</b></div>
       <div class="bar"><i style="width:${(100 * r.cycles) / max}%"></i></div>
-      <div class="cmp-foot">CPI ${cpi} · bolhas ${r.stalls} · flush ${r.flushes} · fwd ${r.forwards}${r.done ? '' : ' · não terminou'}</div>`;
+      <div class="cmp-foot">CPI ${cpi} · bolhas ${r.stalls} · flush ${r.flushes} · fwd ${r.forwards}${r.cacheStalls ? ` · espera de cache ${r.cacheStalls}` : ''}${r.done ? '' : ' · não terminou'}</div>`;
     host.appendChild(d);
   }
   const note = document.createElement('p');
   note.className = 'muted small';
-  note.textContent = 'Ciclos não são tempo: o ciclo do monociclo é ~5× mais longo que o de um estágio do pipeline.';
+  note.textContent = `Ciclos não são tempo: o ciclo do monociclo é ~5× mais longo que o de um estágio do pipeline. A última linha usa caches ${geom(cs.d)} com falta de ${cs.d.missPenalty} ciclos.`;
   host.appendChild(note);
+}
+
+function syncCacheForm() {
+  for (const k of ['sets', 'ways', 'blockBytes', 'missPenalty'] as const) $<HTMLSelectElement>('cc-' + k).value = String(cacheCfg[k]);
+}
+
+function renderCaches(rep: CycleReport | undefined) {
+  const host = $('caches');
+  host.replaceChildren();
+  $('caches-note').textContent = cachesOn
+    ? `Cada cache: ${geom(cacheCfg)}. Write-back com write-allocate, substituição LRU. Falta = ${cacheCfg.missPenalty} ciclos (o dobro se expulsar um bloco sujo).`
+    : 'Caches desligadas: IF e MEM acessam a memória direto, sem espera. Ligue em "Cache" ou mude a geometria abaixo.';
+  if (!session || !session.machine.icache || !session.machine.dcache) return;
+  const states = { i: rep?.dp?.icache ?? null, d: rep?.dp?.mem?.cache ?? null };
+  for (const [key, c] of [['i', session.machine.icache], ['d', session.machine.dcache]] as const) {
+    host.appendChild(cacheTable(c, key === 'i' ? 'I-cache · instruções' : 'D-cache · dados', key === 'd', states[key]));
+  }
+}
+
+function cacheTable(c: Cache, title: string, data: boolean, state: 'hit' | 'miss' | 'wait' | null) {
+  const box = document.createElement('div');
+  box.className = 'cache-box';
+  const st = c.stats;
+  const missRate = st.accesses ? st.misses / st.accesses : 0;
+  const amat = 1 + missRate * c.config.missPenalty;
+  box.innerHTML = `<div class="cache-head"><b>${title}</b><span>${st.accesses ? (hitRate(st) * 100).toFixed(1) + '% de acerto' : 'sem acessos'}</span></div>
+    <div class="cache-stats">acessos ${st.accesses} · acertos ${st.hits} · faltas ${st.misses} · write-backs ${st.writebacks}<br>
+    AMAT = 1 + ${(missRate * 100).toFixed(1)}% × ${c.config.missPenalty} = <b>${amat.toFixed(2)} ciclos</b></div>
+    <div class="cache-split">endereço = tag | índice (${c.indexBits} bits) | deslocamento (${c.offsetBits} bits)</div>`;
+  const table = document.createElement('table');
+  table.className = 'ctable';
+  const words = c.config.blockBytes / 4;
+  table.innerHTML = `<tr><th>conj</th><th>via</th><th>V</th><th>D</th><th>tag</th><th>bloco</th><th>conteúdo (${words} palavra${words > 1 ? 's' : ''})</th></tr>`;
+  const last = state && c.last ? c.last : null;
+  c.lines.forEach((row, set) => {
+    row.forEach((l, way) => {
+      const tr = document.createElement('tr');
+      const isLast = last && last.set === set && last.way === way;
+      tr.className = (l.valid ? '' : 'invalid') + (isLast ? ` last ${state}` : '');
+      let content = '—';
+      let addr = '';
+      if (l.valid && session) {
+        const base = c.blockAddr(set, l.tag);
+        addr = '0x' + base.toString(16);
+        const vals = Array.from({ length: words }, (_, k) => session!.mem.read32(base + 4 * k));
+        content = vals.map((v, k) => {
+          const hl = isLast && (last!.offset >> 2) === k ? ' class="w"' : '';
+          return `<span${hl}>${data ? v : '0x' + (v >>> 0).toString(16).padStart(8, '0')}</span>`;
+        }).join(' ');
+      }
+      tr.innerHTML = `<td>${way === 0 ? set : ''}</td><td>${way}</td><td>${l.valid ? 1 : 0}</td><td>${l.dirty ? 1 : 0}</td><td>${l.valid ? '0x' + l.tag.toString(16) : '—'}</td><td>${addr || '—'}</td><td class="cw">${content}</td>`;
+      table.appendChild(tr);
+    });
+  });
+  box.appendChild(table);
+  return box;
 }
 
 function refreshControls() {
@@ -377,6 +453,9 @@ function refreshControls() {
   fwd.textContent = forwarding ? 'On' : 'Off';
   fwd.classList.toggle('on', forwarding);
   fwd.disabled = model === 'single';
+  const cb = $<HTMLButtonElement>('cache');
+  cb.textContent = cachesOn ? 'On' : 'Off';
+  cb.classList.toggle('on', cachesOn);
   const runBtn = document.querySelector<HTMLButtonElement>('[data-act="run"]')!;
   runBtn.textContent = running ? 'Pausar ❚❚' : 'Rodar ▸';
   runBtn.classList.toggle('on', !!running);
@@ -437,6 +516,17 @@ $('fwd').onclick = () => {
   forwarding = !forwarding;
   assembleAndReset();
 };
+$('cache').onclick = () => {
+  cachesOn = !cachesOn;
+  assembleAndReset();
+};
+for (const k of ['sets', 'ways', 'blockBytes', 'missPenalty'] as const) {
+  $<HTMLSelectElement>('cc-' + k).onchange = (e) => {
+    cacheCfg = { ...cacheCfg, [k]: Number((e.target as HTMLSelectElement).value) };
+    cachesOn = true;
+    assembleAndReset();
+  };
+}
 $('labels').onclick = () => {
   labels = !labels;
   $('labels').textContent = labels ? 'On' : 'Off';
