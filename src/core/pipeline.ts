@@ -255,7 +255,7 @@ export class Pipeline implements Machine {
     const blocked = [redirect === null ? old.ifid : null, old.idex, old.exmem].some((x) => x && halts(x.d));
     if (this.halted) {
       // nada a buscar
-    } else if (redirect !== null) {
+    } else if (redirect !== null) { // verifica se não há desvios (jump, condicionais)
       const squashed = this.fetch(this.pc, this.seq++);
       stages.IF = slot(squashed, 'squash');
       const lost = (old.ifid ? 1 : 0) + 1;
@@ -267,14 +267,14 @@ export class Pipeline implements Machine {
       this.pc = redirect;
       dp.flush = true;
       dp.pcSrc = 'branch';
-    } else if (stall) {
+    } else if (stall) { //Verifica bolhas
       newIfid = old.ifid;
       if (this.wait.i > 0) {
         this.wait.i--;
         dp.icache = 'wait';
       }
       if (!blocked) stages.IF = slot(this.fetch(this.pc, this.seq), 'stall');
-    } else if (!blocked) {
+    } else if (!blocked) { //fluxo normal
       let waiting = false;
       if (this.icache) {
         if (this.wait.i === 0 && !this.wait.iFilled) {
@@ -307,15 +307,18 @@ export class Pipeline implements Machine {
     }
     dp.pcNext = this.pc;
 
+    //atualiza
     if (this.halted) {
-      this.latches = { ifid: null, idex: null, exmem: null, memwb: null };
+      this.latches = { ifid: null, idex: null, exmem: null, memwb: null }; //parou, limpa os latches
     } else {
-      this.latches = { ifid: newIfid, idex: newIdex, exmem: newExmem, memwb: newMemwb };
+      this.latches = { ifid: newIfid, idex: newIdex, exmem: newExmem, memwb: newMemwb }; //grava o que foi calculado em cada estágio
     }
     return { cycle, stages, events, dp };
   }
 
-  snapshot() {
+
+  //Salva o estado do ciclo para poder restaurar com a função de "voltar"
+  snapshot() { //salva tudo que foi feito no ciclo
     return structuredClone({
       regs: Array.from(this.regs), pc: this.pc, halted: this.halted, stats: this.stats,
       latches: this.latches, seq: this.seq, config: this.config, wait: this.wait,
@@ -323,7 +326,7 @@ export class Pipeline implements Machine {
     });
   }
 
-  restore(s: unknown) {
+  restore(s: unknown) { //usa uma snapshop s salva para restaurar o que foi feito naquele ciclo
     const v = structuredClone(s) as ReturnType<Pipeline['snapshot']>;
     this.regs = Int32Array.from(v.regs);
     this.pc = v.pc;

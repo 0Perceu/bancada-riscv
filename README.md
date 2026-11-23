@@ -81,3 +81,9 @@ Mapa de memória: código a partir de `0x0000`, dados a partir de `0x1000`, pilh
 - Predição de desvio configurável (1 bit, 2 bits, BTB) com taxa de acerto.
 - Rodar a suíte oficial `riscv-tests` (rv32ui) e programas em C compilados com GCC.
 - Tomasulo como terceiro modelo.
+
+## Bibliografia e Referências
+
+- **[Ripes](https://github.com/mortbopet/Ripes)**: Simulador visual e explorador de microarquitetura para RISC-V. O repositório foi analisado e serviu de base para estruturar a organização dos componentes do projeto, em especial a separação dos estágios do pipeline, as unidades de encaminhamento (*forwarding*) e detecção de conflitos (*hazards*), além da modelagem do caminho de dados e da hierarquia de caches.
+- **[WebRISC-V](https://webriscv.dii.unisi.it/)**: Simulador educacional do pipeline RISC-V desenvolvido na Universidade de Siena. Foi utilizado como referência para analisar o comportamento ciclo a ciclo do microprocessador e serviu de inspiração direta para construir o projeto na forma de uma aplicação web interativa, dispensando a instalação de cadeias de ferramentas locais.
+
